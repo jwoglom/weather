@@ -23,6 +23,7 @@ ini_set('display_errors', 'on');
         function __construct($config)
 
         {
+                echo "IRC: Starting.\n";
                 $this->socket = fsockopen($config['server'], $config['port']);
                 $this->login($config);
                 $this->main($config);
@@ -42,6 +43,7 @@ ini_set('display_errors', 'on');
                 $this->send_data('USER', $config['nick'].' wogloms.com '.$config['nick'].' :'.$config['name']);
                 $this->send_data('NICK', $config['nick']);
         $this->join_channel($config['channel']);
+                echo "IRC: Logged in.\n";
         }
 
 
@@ -81,12 +83,12 @@ ini_set('display_errors', 'on');
                                                                  
                         case ':@say':
                                 $message = "";
-                                for($i=5; $i <= (count($this->ex)); $i++)
+                                for($i=4; $i <= (count($this->ex)); $i++)
                                 {
                                         $message .= $this->ex[$i]." ";
                                 }
                                 
-                                $this->send_data('PRIVMSG '.$this->ex[4].' :', $message);
+                                $this->send_data('PRIVMSG '.$this->ex[2].' :'.$message);
                                 break;                              
                                 exit;
                         case ':@shutdown':
@@ -104,11 +106,11 @@ ini_set('display_errors', 'on');
                 if($msg == null)
                 {
                         fputs($this->socket, $cmd."\r\n");
-                        echo 'Sent: '.$cmd.'\n';
+                        echo "Sent: ".$cmd."\n";
                 } else {
 
                         fputs($this->socket, $cmd.' '.$msg."\r\n");
-                        echo 'Sent: '.$cmd.' '.$msg.'\n';
+                        echo "Sent: ".$cmd." ".$msg."\n";
                 }
 
         }

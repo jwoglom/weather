@@ -1,4 +1,5 @@
 <?php
+require_once 'IRCBot.php';
 class WeatherChecker {
 
     var $db;
@@ -92,11 +93,14 @@ class IRCWeatherChecker extends WeatherChecker {
     var $ircchan;
 
     function __construct($opts) {
-        parent::__construct();
+        echo "Starting IRC..";
         $this->irc = new IRCBot($opts);
         $this->ircchan = $opts['channel'];
+        echo "Continuing..";
+        parent::__construct();
     }
     function notify($msg) {
+        parent::notify($msg);
         $this->irc->send_data("PRIVMSG " . $this->ircchan . " :".$msg);
     }
 }
