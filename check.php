@@ -87,5 +87,27 @@ class WeatherChecker {
     }
 }
 
-new WeatherChecker();
+class IRCWeatherChecker extends WeatherChecker {
+    var $irc;
+    var $ircchan;
+
+    function __construct($opts) {
+        parent::__construct();
+        $this->irc = new IRCBot($opts);
+        $this->ircchan = $opts['channel'];
+    }
+    function notify($msg) {
+        $this->irc->send_data("PRIVMSG " . $this->ircchan . " :".$msg);
+    }
+}
+
+
+new IRCWeatherChecker(array(
+    "server" => "chat.freenode.net",
+    "port" => 6667,
+    "channel" => "***REMOVED***",
+    "name" => "tjWeather",
+    "nick" => "tjWeather",
+    "pass" => ""
+));
 ?>

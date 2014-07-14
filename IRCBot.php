@@ -3,6 +3,8 @@
  * Simple PHP IRC Bot
  * @author     Super3boy <admin@wildphp.com>
  **/
+set_time_limit(0);
+ini_set('display_errors', 'on');
  class IRCBot {
 
         //This is going to hold our TCP/IP connection
@@ -37,7 +39,7 @@
 
         function login($config)
         {
-                $this->send_data('USER', $config['nick'].' wildphp.com '.$config['nick'].' :'.$config['name']);
+                $this->send_data('USER', $config['nick'].' wogloms.com '.$config['nick'].' :'.$config['name']);
                 $this->send_data('NICK', $config['nick']);
         $this->join_channel($config['channel']);
         }
@@ -54,7 +56,7 @@
         {             
                 $data = fgets($this->socket, 256);
                 
-                echo nl2br($data);
+                echo "Got: $data";
                 
                 flush();
 
@@ -70,14 +72,14 @@
 
                 switch($command) //List of commands the bot responds to from a user.
                 {                      
-                        case ':!join':
+                        case ':@join':
                                 $this->join_channel($this->ex[4]);
                                 break;                     
-                        case ':!part':
-                                $this->send_data('PART '.$this->ex[4].' :', 'Wildphp.com Free IRC Bot Script');
+                        case ':@part':
+                                $this->send_data('PART '.$this->ex[4].' :', 'Bot leaving');
                                 break;   
                                                                  
-                        case ':!say':
+                        case ':@say':
                                 $message = "";
                                 for($i=5; $i <= (count($this->ex)); $i++)
                                 {
@@ -86,12 +88,9 @@
                                 
                                 $this->send_data('PRIVMSG '.$this->ex[4].' :', $message);
                                 break;                              
-                        
-                        case ':!restart':
-                                echo "<meta http-equiv=\"refresh\" content=\"5\">";
                                 exit;
-                        case ':!shutdown':
-                                $this->send_data('QUIT', 'Wildphp.com Free IRC Bot Script');
+                        case ':@shutdown':
+                                $this->send_data('QUIT', 'Bot quitting');
                                 exit;
                 }
 
@@ -100,16 +99,16 @@
 
 
 
-        function send_data($cmd, $msg = null) //displays stuff to the broswer and sends data to the server.
+        function send_data($cmd, $msg = null) //displays stuff to the browser and sends data to the server.
         {
                 if($msg == null)
                 {
                         fputs($this->socket, $cmd."\r\n");
-                        echo '<strong>'.$cmd.'</strong><br />';
+                        echo 'Sent: '.$cmd.'\n';
                 } else {
 
                         fputs($this->socket, $cmd.' '.$msg."\r\n");
-                        echo '<strong>'.$cmd.' '.$msg.'</strong><br />';
+                        echo 'Sent: '.$cmd.' '.$msg.'\n';
                 }
 
         }
