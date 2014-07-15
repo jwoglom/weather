@@ -8,3 +8,7 @@ CREATE TABLE config (
 key VARCHAR(255),
 value VARCHAR(255),
 primary KEY (key));
+
+CREATE TABLE channels (
+name VARCHAR(255),
+primary KEY (name));
