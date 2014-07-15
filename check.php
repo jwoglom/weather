@@ -242,24 +242,32 @@ class IRCWeatherChecker {
                 }
                 switch($command) {//List of commands the bot responds to from a user.
                     case ':@join':
-                        echo "Sending join to ".$this->ex[4];
+                    if($this->isadmin($this->ex[0])) {
+                        $this->sayprimary("Sending join to ".$this->ex[4]);
                         $this->join_channel($this->ex[4]);
+                    }
                         break;
 
                     case ':@part':
+                    if($this->isadmin($this->ex[0])) {
+                        $this->sayprimary("Sending part to ".$this->ex[4]);
                         $this->part_channel($this->ex[4]);
+                    }
                         break;   
 
                     case ':@say':
+                    if($this->isadmin($this->ex[0])) {
                         $loc = $this->ex[2];
                         if($loc == $this->config['nick']) {
                             echo "Sending PM to main channel from ".$this->ex[0]."\n";
                             $loc = $this->config['channel'];
                         }
                         $this->send_data('PRIVMSG '.$loc.' :'.$message);
+                    }
                         break;
 
                     case ':@sayto':
+                    if($this->isadmin($this->ex[0])) {
                         $loc = $this->ex[4];
                         $message2 = "";
                         for($i=5; $i <= (count($this->ex)); $i++) {
@@ -268,23 +276,30 @@ class IRCWeatherChecker {
                             }
                         }
                         $this->sendto($loc, $message2);
+                    }
                         break;
 
                     case ':@reboot':
+                    if($this->isadmin($this->ex[0])) {
                         $this->sayprimary("Restarting..");
                         $this->reboot();
+                    }
                         break;
 
                     case ':@set':
+                    if($this->isadmin($this->ex[0])) {
                         $this->setconfig($this->ex[4], $this->ex[5]);
+                    }
                         break;
 
                     case ':@get':
+                    if($this->isadmin($this->ex[0])) {
                         $this->sayto($this->ex[2], $this->getconfig($this->ex[4]));
+                    }
                         break;
 
                     case ':@check':
-                        $this->check_weather(true);
+                        $this->check_weather(isset($this->ex[4]) ? ($this->ex[4] == "true" ? true : false) : true);
                         break;
 
                     case ':@help':
@@ -292,16 +307,39 @@ class IRCWeatherChecker {
                         $this->sayto($this->ex[2], "To manually check for alerts, run @check. To follow alerts, run /msg ".$this->config['nick']." @follow");
                         break;
 
-                    case ':@clearall':
+                    case ':@clearmessages':
+                    if($this->isadmin($this->ex[0])) {
                         if(isset($this->ex[4]) && trim($this->ex[4]) == "yes") {
                             $this->weather->clearall();
                             $this->sayprimary("Cleared all saved messages.");
                         } else $this->sayprimary("Add yes to confirm.");
+                    }
                         break;
 
+                    case ':@clearchannels':
+                    if($this->isadmin($this->ex[0])) {
+                        if(isset($this->ex[4]) && trim($this->ex[4]) == "yes") {
+                            foreach($this->getchans() as $ch) {
+                                $this->rm_dbchannel($ch);
+                            }
+                            $this->sayprimary("Cleared all saved channels.");
+                        } else $this->sayprimary("Add yes to confirm.");
+                    }
+                        break;
+
+                    case ':@listchannels':
+                    if($this->isadmin($this->ex[0])) {
+                        foreach($this->getchans() as $ch) {
+                            $str .= $ch." ";
+                        }
+                        $this->sayprimary("Joined to: $str");
+                    }
+
                     case ':@runcustom':
+                    if($this->isadmin($this->ex[0])) {
                         $this->sayprimary("Running ".$message);
                         $this->send_data($message);
+                    }
                         break;
 
                     case ':@eval':
@@ -330,8 +368,10 @@ class IRCWeatherChecker {
                         break;
 
                     case ':@quit':
+                    if($this->isadmin($this->ex[0])) {
                         $this->send_data('QUIT', 'Bot quitting');
                         $this->timestamp = 0;
+                    }
                         exit;
 
                 }
@@ -466,7 +506,7 @@ class IRCWeatherChecker {
 new IRCWeatherChecker(array(
     "server" => "chat.freenode.net",
     "port" => 6667,
-    "channel" => "***REMOVED***", // Primary channel
+    "channel" => "#tjcsl-weather", // Primary channel
     "name" => "tjWeather",
     "nick" => "tjWeather",
     "ns" => array(
