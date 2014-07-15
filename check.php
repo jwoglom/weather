@@ -48,13 +48,16 @@ class WeatherChecker {
         foreach($this->entries as $entry) {
             $postid = explode("?x=", $entry['id'])[1]; // actual ID
             $fr = $this->find_row($postid); // See if row exists and is notified
+            echo "\n fr = $fr for $postid\n\n";
             $msg = $this->get_message($entry);
-            if(!$fr) {
+            if($fr == false || $all) {
+                if($all) {
+                    echo "Force adding row: $postid\n";
+                    $msg = "";
+                }
+                else echo "Trying to add row: $postid\n";
                 $this->add_row($postid, $msg); // Add row if doesn't exist
                 $ret[] = $msg;
-            } else if($all) {
-                $ret[] = $msg;
-                echo "Notifying $postid anyway\n";
             } else echo "Not notifying $postid -- already notified. \n";
         }
         return $ret;
@@ -75,11 +78,21 @@ class WeatherChecker {
         $query = $this->db->query("SELECT irc_notified FROM messages WHERE " .
             "id='" . $this->db->escapeString($id) . "' LIMIT 1;"
         );
-        return ($query->numColumns() != 0);
+        $arr = $query->fetchArray();
+        var_dump($arr);
+        if(count($arr) > 0 && $arr != false) {
+            echo "Found $id\n";
+            return true;
+        } else {
+            "Not found $id\n";
+            return false;
+        }
     }
 
     function add_row($id, $message) {
-        if($this->find_row($id)) return;
+        if($this->find_row($id) === true) {
+            echo "Trying to add existent row.";return;
+        }
         $this->db->query("INSERT INTO messages VALUES(" .
             "'" . $this->db->escapeString($id) . "', " .
             "'" . $this->db->escapeString($message) . "', " .
@@ -154,7 +167,11 @@ class IRCWeatherChecker {
 
         function __construct($config) {
             echo "IRC: Starting.\n";
-            $this->todo = array();
+            if(isset($config['ns'])) {
+                $nscmd = "PRIVMSG NickServ :identify ".$config['ns']['user']." ".$config['ns']['pass'];
+            } else $nscmd = "";
+            $this->todo = array($nscmd);
+            
             $this->timestamp = time();
             $this->weather = new WeatherChecker($this->todo);
             $this->socket = fsockopen($config['server'], $config['port']);
@@ -177,8 +194,8 @@ class IRCWeatherChecker {
                     for($i=0; $i<30; $i+=5) {
                         sleep(5);
                         if(time() - $this->timestamp >= 300) {
-                            echo "Bye bye.";
-                            exit();
+                            echo "My time is ".time().", ts is ".$this->timestamp."\n";
+                            // exit();
                         }
                     }
                 }
@@ -247,6 +264,10 @@ class IRCWeatherChecker {
                         $this->timestamp = 0;
                         exit;
 
+                    case ':@help':
+                        $this->say("I am a bot which displays Weather.gov alerts. Direct all inquiries to jwoglom.");
+                        $this->say("To manually check for alerts, run @check.");
+
                 }
             }
 
@@ -262,6 +283,9 @@ class IRCWeatherChecker {
         function send_data($cmd, $msg = null) {
             if($msg == null) {
                 fputs($this->socket, $cmd."\r\n");
+                if(strpos($cmd, "NickServ :identify") !== false) {
+                    $cmd = "NickServ identify command";
+                }
                 echo "Sent: ".$cmd."\n";
             } else {
                 fputs($this->socket, $cmd.' '.$msg."\r\n");
@@ -303,7 +327,6 @@ class IRCWeatherChecker {
             echo "Running shutdown functions...";
             $this->timestamp = 0;
             $tmp = null;
-            pcntl_wait($tmp);
             die();
         }
 
@@ -320,6 +343,9 @@ new IRCWeatherChecker(array(
     "channel" => "***REMOVED***",
     "name" => "tjWeather",
     "nick" => "tjWeather",
-    "pass" => ""
+    "ns" => array(
+        "user" => "tjWeather",
+        "pass" => base64_decode(file_get_contents("pass.txt"))
+    )
 ));
 ?>
