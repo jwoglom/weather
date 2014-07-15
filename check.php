@@ -244,7 +244,8 @@ class IRCWeatherChecker {
                     case ':@join':
                         echo "Sending join to ".$this->ex[4];
                         $this->join_channel($this->ex[4]);
-                        break;                     
+                        break;
+
                     case ':@part':
                         $this->part_channel($this->ex[4]);
                         break;   
@@ -288,7 +289,7 @@ class IRCWeatherChecker {
 
                     case ':@help':
                         $this->sayto($this->ex[2], "I am a bot which displays Weather.gov alerts. Direct all inquiries to jwoglom.");
-                        $this->sayto($this->ex[2], "To manually check for alerts, run @check.");
+                        $this->sayto($this->ex[2], "To manually check for alerts, run @check. To follow alerts, run /msg ".$this->config['nick']." @follow");
                         break;
 
                     case ':@clearall':
@@ -312,6 +313,22 @@ class IRCWeatherChecker {
                         }
                         break;
 
+                    case ':@follow':
+                        // Add them to db table
+                        $username = explode("@", $this->ex[0])[0];
+                        $this->add_dbchannel($username);
+                        $this->sayto($username, "You are now following weather alerts.");
+                        $this->sayto($username, "You may stop recieving messages at any time by running:");
+                        $this->sayto($username, "/msg ".$this->config['nick']." @unfollow");
+                        break;
+
+                    case ':@unfollow':
+                        // Remove them from db table
+                        $username = explode("@", $this->ex[0])[0];
+                        $this->rm_dbchannel($username);
+                        $this->sayto($username, "You will no longer recieve weather alerts.");
+                        break;
+
                     case ':@quit':
                         $this->send_data('QUIT', 'Bot quitting');
                         $this->timestamp = 0;
@@ -331,6 +348,8 @@ class IRCWeatherChecker {
             while($chan = $sql->fetchArray()) {
                 $ret[] = $chan['name'];
             }
+            echo "Current db chans:\n";
+            print_r($ret);
             return $ret;
         }
 
@@ -362,8 +381,8 @@ class IRCWeatherChecker {
         function join_channel($channel) {
             if(is_array($channel)) {
                 foreach($channel as $chan) {
-                    $this->send_data('JOIN', $chan);
-                    $this->add_dbchannel($chan);
+                    $this->send_data('JOIN', trim($chan));
+                    $this->add_dbchannel(trim($chan));
                 }
             } else {
                 $this->send_data('JOIN', $channel);
@@ -372,8 +391,8 @@ class IRCWeatherChecker {
         }
 
         function add_dbchannel($channel) {
-            if(strlen(trim($channel)) > 0 && strpos($channel, "#") !== false) {
-                $this->weather->db->query("INSERT OR REPLACE INTO channels VALUES('" . $this->weather->db->escapeString($channel) . "');");
+            if(strlen(trim($channel)) > 0) { /*  && strpos($channel, "#") !== false */
+                $this->weather->db->query("INSERT OR REPLACE INTO channels VALUES('" . $this->weather->db->escapeString(trim($channel)) . "');");
             }
         }
 
@@ -385,12 +404,18 @@ class IRCWeatherChecker {
             $this->add_dbchannel($this->config['channel']);
             $sql = $this->weather->db->query("SELECT * FROM channels");
             while($chan = $sql->fetchArray()) {
-                $ch = $chan['name'];
+                $ch = trim($chan['name']);
                 if($ch == $this->config['channel']) {
                     // Already joined, main channel
                 } else {
-                    echo "wouldbe Joining $ch\n";
-                    array_push($this->todo, "JOIN $ch");
+                    if(substr($ch, 0, 1) == "#") {
+                        echo "Joining $ch\n";
+                        array_push($this->todo, "JOIN $ch");
+                        // Don't add_dbchannel because it's already in the database
+                    } else {
+                        // User -- don't join
+                        echo "Followed user $ch\n";
+                    }
                 }
             }
         }
