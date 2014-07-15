@@ -348,7 +348,7 @@ class IRCWeatherChecker {
             if(is_array($channel)) {
                 foreach($channel as $chan) {
                 $this->send_data('JOIN', $chan);
-                array_push($this->curchans, trim($channel));
+                array_push($this->curchans, trim($chan));
                 }
             } else {
                 $this->send_data('JOIN', $channel);
