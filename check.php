@@ -257,9 +257,21 @@ class IRCWeatherChecker {
                         $this->send_data('PRIVMSG '.$loc.' :'.$message);
                         break;
 
+                    case ':@sayto':
+                        $loc = $this->ex[4];
+                        $message2 = "";
+                        for($i=5; $i <= (count($this->ex)); $i++) {
+                            if(isset($this->ex[$i])) {
+                                $message2 .= $this->ex[$i]." ";
+                            }
+                        }
+                        $this->sendto($loc, $message2);
+                        break;
+
                     case ':@reboot':
                         $this->sayprimary("Restarting..");
                         $this->reboot();
+                        break;
 
                     case ':@set':
                         $this->setconfig($this->ex[4], $this->ex[5]);
@@ -273,6 +285,13 @@ class IRCWeatherChecker {
                         $this->check_weather(true);
                         break;
 
+                    case ':@addtoarr':
+                        array_push($this->curchans, trim($channel));
+                        break;
+
+                    case ':@arrunique':
+                        $this->curchans = array_unique($this->curchans);
+                        break;
 
                     case ':@help':
                         $this->sayto($this->ex[2], "I am a bot which displays Weather.gov alerts. Direct all inquiries to jwoglom.");
@@ -335,6 +354,7 @@ class IRCWeatherChecker {
                 $this->send_data('JOIN', $channel);
                 array_push($this->curchans, trim($channel));
             }
+            $this->curchans = array_unique($this->curchans);
         }
 
         function part_channel($channel) {
