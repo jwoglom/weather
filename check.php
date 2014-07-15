@@ -139,6 +139,8 @@ class IRCWeatherChecker {
 
         var $weather;
 
+        var $timestamp;
+
         // This is going to hold our TCP/IP connection
         var $socket;
         var $config;
@@ -149,10 +151,14 @@ class IRCWeatherChecker {
         function __construct($config) {
                 echo "IRC: Starting.\n";
                 $this->todo = array();
+                $this->timestamp = time();
                 $this->weather = new WeatherChecker($this->todo);
                 $this->socket = fsockopen($config['server'], $config['port']);
                 $this->config = $config;
                 $this->login($config);
+
+                register_shutdown_function(array($this, 'handle_shutdown'));
+
                 echo "Forking..\n";
                 $pid = pcntl_fork();
                 if($pid == -1) die("Error.");
@@ -162,6 +168,10 @@ class IRCWeatherChecker {
                 } else {
                     // Child
                     while(true) {
+                        if(time() - $this->timestamp >= 60) {
+                            echo "Bye bye.";
+                            quit();
+                        }
                         echo "Running background check.\n";
                         $this->check_weather(false);
                         sleep(30);
@@ -176,7 +186,8 @@ class IRCWeatherChecker {
                 echo "IRC: Logged in.\n";
         }
 
-        function main($config) {   
+        function main($config) {
+            $this->timestamp = time();
             $data = fgets($this->socket, 256);
             echo "Got: $data";
             flush();
@@ -218,6 +229,7 @@ class IRCWeatherChecker {
 
                     case ':@shutdown':
                         $this->send_data('QUIT', 'Bot quitting');
+                        $this->timestamp = 0;
                         exit;
 
                 }
@@ -270,6 +282,12 @@ class IRCWeatherChecker {
 
         function setconfig($key, $val) {
             return $this->weather->setconfig($key, $val);
+        }
+
+        function handle_shutdown() {
+            echo "Running shutdown functions...";
+            $this->timestamp = 0;
+            pcntl_waitpid();
         }
 
 }
