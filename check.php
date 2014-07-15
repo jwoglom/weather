@@ -52,14 +52,17 @@ class WeatherChecker {
             $msg = $this->get_message($entry);
             if($fr == false || $all) {
                 if($all) {
-                    echo "Force adding row: $postid\n";
-                    $msg = "";
+                    echo "Force continuing: $postid\n";
                 }
-                else echo "Trying to add row: $postid\n";
-                $this->add_row($postid, $msg); // Add row if doesn't exist
+                else {
+                    echo "Trying to add row: $postid\n";
+                    $this->add_row($postid, $msg); // Add row if doesn't exist
+                }
                 $ret[] = $msg;
             } else echo "Not notifying $postid -- already notified. \n";
         }
+        echo "Returning:";
+        print_r($ret);
         return $ret;
     }
 
@@ -161,7 +164,7 @@ class IRCWeatherChecker {
 
         var $timestamp;
 
-        var $curchans;
+        public $curchans;
 
         // This is going to hold our TCP/IP connection
         var $socket;
@@ -238,6 +241,7 @@ class IRCWeatherChecker {
                 }
                 switch($command) {//List of commands the bot responds to from a user.
                     case ':@join':
+                        echo "Sending join to ".$this->ex[4];
                         $this->join_channel($this->ex[4]);
                         break;                     
                     case ':@part':
@@ -254,7 +258,7 @@ class IRCWeatherChecker {
                         break;
 
                     case ':@reboot':
-                        $this->say("Restarting..");
+                        $this->sayprimary("Restarting..");
                         $this->reboot();
 
                     case ':@set':
@@ -262,7 +266,7 @@ class IRCWeatherChecker {
                         break;
 
                     case ':@get':
-                        $this->say($this->getconfig($this->ex[4]));
+                        $this->sayto($this->ex[2], $this->getconfig($this->ex[4]));
                         break;
 
                     case ':@check':
@@ -271,15 +275,20 @@ class IRCWeatherChecker {
 
 
                     case ':@help':
-                        $this->say("I am a bot which displays Weather.gov alerts. Direct all inquiries to jwoglom.");
-                        $this->say("To manually check for alerts, run @check.");
+                        $this->sayto($this->ex[2], "I am a bot which displays Weather.gov alerts. Direct all inquiries to jwoglom.");
+                        $this->sayto($this->ex[2], "To manually check for alerts, run @check.");
                         break;
 
                     case ':@clearall':
                         if(isset($this->ex[4]) && trim($this->ex[4]) == "yes") {
                             $this->weather->clearall();
-                            $this->say("Cleared all saved messages.");
-                        } else $this->say("Type '@clearall yes' to confirm.");
+                            $this->sayprimary("Cleared all saved messages.");
+                        } else $this->sayprimary("Add yes to confirm.");
+                        break;
+
+                    case ':@runcustom':
+                        $this->sayprimary("Running ".$message);
+                        $this->send_data($message);
                         break;
 
                     case ':@quit':
@@ -295,10 +304,12 @@ class IRCWeatherChecker {
             $this->main($config);
         }
 
-        function say($txt) {
-            foreach($this->curchans as $chan) {
-                $this->send_data("PRIVMSG ".$chan." :".$txt);
-            }
+        function sayto($chan, $txt) {
+            $this->send_data("PRIVMSG ".$chan." :".$txt);
+        }
+
+        function sayprimary($txt) {
+            $this->send_data("PRIVMSG ".$this->config['channel']." :".$txt);
         }
 
         function send_data($cmd, $msg = null) {
@@ -317,11 +328,12 @@ class IRCWeatherChecker {
         function join_channel($channel) {
             if(is_array($channel)) {
                 foreach($channel as $chan) {
-                    $this->join_channel($chan);
+                $this->send_data('JOIN', $chan);
+                array_push($this->curchans, trim($channel));
                 }
             } else {
                 $this->send_data('JOIN', $channel);
-                $this->curchans[] = $channel;
+                array_push($this->curchans, trim($channel));
             }
         }
 
@@ -331,12 +343,15 @@ class IRCWeatherChecker {
         }
 
         function check_weather($all) {
+            print_r($this->curchans);
             $ret = $this->weather->run($all);
             if(sizeof($ret) > 0) {
                 foreach($ret as $txt) {
-                    if(substr(trim(strtolower($txt)), 0, 19) != "there are no active" || $all || $this->getconfig("showall") == true) {
+                    if(strlen($txt) > 1 && (substr(trim(strtolower($txt)), 0, 19) != "there are no active" || $all || $this->getconfig("showall") == true)) {
                         echo "\nSending: $txt \n";
-                        $this->say($txt);
+                        foreach($this->curchans as $ch) {
+                            $this->sayto($ch, $txt);
+                        }
                     } else echo "\nNot sending: $txt \n";
                 }
             }
