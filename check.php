@@ -3,10 +3,20 @@ require_once 'IRCBot.php';
 class WeatherChecker {
 
     var $db;
+
     function __construct() {
         $this->db = new SQLite3("database.sqlite3");
-        $this->get_entries();
-        $this->loop_entries();
+        sleep(10);
+        $this->main_loop();
+    }
+
+    function main_loop() {
+        while(true) {
+            $this->run_notify("Running loop.");
+            $this->get_entries();
+            $this->loop_entries();
+            sleep(5);
+        }
     }
 
     function urlshorten($url) {
@@ -83,6 +93,10 @@ class WeatherChecker {
         $this->db->query("UPDATE TABLE messages SET irc_notified=1 WHERE id='" . $this->db->escapeString($msgid) . "'");
     }
 
+    function run_notify($msg) {
+        return $this->notify($msg);
+    }
+
     function notify($msg) {
         echo "Notifying: $msg \n";
     }
@@ -93,15 +107,29 @@ class IRCWeatherChecker extends WeatherChecker {
     var $ircchan;
 
     function __construct($opts) {
-        echo "Starting IRC..";
-        $this->irc = new IRCBot($opts);
-        $this->ircchan = $opts['channel'];
-        echo "Continuing..";
-        parent::__construct();
+        echo "Forking..\n";
+        $pid = pcntl_fork();
+        if($pid == -1) die("Error.");
+        else if($pid) {
+            // Parent.
+            $this->irc = new IRCBot($opts);
+        } else {
+            // Child
+            $this->ircchan = $opts['channel'];
+            echo "Continuing..\n";
+            parent::__construct();
+        }   
     }
+
+
     function notify($msg) {
+        echo "Subnotify $msg \n";
+        $this->irc->send_message($this->ircchan, $msg);
         parent::notify($msg);
-        $this->irc->send_data("PRIVMSG " . $this->ircchan . " :".$msg);
+    }
+
+    function run_notify($msg) {
+        return $this->notify($msg);
     }
 }
 

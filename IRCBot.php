@@ -7,6 +7,7 @@ set_time_limit(0);
 ini_set('display_errors', 'on');
  class IRCBot {
 
+        public static $todo = array();
         //This is going to hold our TCP/IP connection
         var $socket;
 
@@ -69,31 +70,40 @@ ini_set('display_errors', 'on');
                 {
                         $this->send_data('PONG', $this->ex[1]); //Plays ping-pong with the server to stay connected.
                 }
+                if(sizeof($this->ex) >= 4) {
+                    $command = str_replace(array(chr(10), chr(13)), '', $this->ex[3]);
 
-                $command = str_replace(array(chr(10), chr(13)), '', $this->ex[3]);
+                    switch($command) //List of commands the bot responds to from a user.
+                    {                      
+                            case ':@join':
+                                    $this->join_channel($this->ex[4]);
+                                    break;                     
+                            case ':@part':
+                                    $this->send_data('PART '.$this->ex[4].' :', 'Bot leaving');
+                                    break;   
+                                                                     
+                            case ':@say':
+                                    $message = "";
+                                    for($i=4; $i <= (count($this->ex)); $i++)
+                                    {
+                                        if(isset($this->ex[$i])) {
+                                            $message .= $this->ex[$i]." ";
+                                        }
+                                    }
+                                    
+                                    $this->send_data('PRIVMSG '.$this->ex[2].' :'.$message);
+                                    break;                              
+                                    exit;
+                            case ':@shutdown':
+                                    $this->send_data('QUIT', 'Bot quitting');
+                                    exit;
+                    }
+                }
 
-                switch($command) //List of commands the bot responds to from a user.
-                {                      
-                        case ':@join':
-                                $this->join_channel($this->ex[4]);
-                                break;                     
-                        case ':@part':
-                                $this->send_data('PART '.$this->ex[4].' :', 'Bot leaving');
-                                break;   
-                                                                 
-                        case ':@say':
-                                $message = "";
-                                for($i=4; $i <= (count($this->ex)); $i++)
-                                {
-                                        $message .= $this->ex[$i]." ";
-                                }
-                                
-                                $this->send_data('PRIVMSG '.$this->ex[2].' :'.$message);
-                                break;                              
-                                exit;
-                        case ':@shutdown':
-                                $this->send_data('QUIT', 'Bot quitting');
-                                exit;
+                usleep(50000);
+
+                while(sizeof(self::$todo) > 0) {
+                    send_data(array_shift(self::$todo));
                 }
 
                 $this->main($config);
@@ -130,5 +140,9 @@ ini_set('display_errors', 'on');
                 } else {
                         $this->send_data('JOIN', $channel);
                 }
-        }     
+        }
+
+        static function send_message($chan, $msg) {
+            self::$todo[] = "PRIVMSG " . $chan . " :".$msg;
+        } 
 }
