@@ -86,6 +86,20 @@ class WeatherChecker {
     function mark_notified($msgid) {
         $this->db->query("UPDATE TABLE messages SET irc_notified=1 WHERE id='" . $this->db->escapeString($msgid) . "'");
     }
+
+    function getconfig($key) {
+        $q = $this->db->query("SELECT key,value FROM config WHERE key='" . $this->db->escapeString($key) . "';");
+        if(isset($q, $q['value']) {
+            return $q['value'];
+        } else {
+            return null;
+        }
+    }
+
+    function setconfig($key, $value) {
+        $this->db->query("DELETE FROM config WHERE key = '" . $this->db->escapeString($key) . "';");
+        $this->db->query("INSERT INTO config VALUES('" . $this->db->escapeString($key) . "', '" . $this->db->escapeString($value) . "');");
+    }
 }
 /*
 class IRCWeatherChecker extends WeatherChecker {
@@ -139,7 +153,20 @@ class IRCWeatherChecker {
                 $this->socket = fsockopen($config['server'], $config['port']);
                 $this->config = $config;
                 $this->login($config);
-                $this->main($config);
+                echo "Forking..\n";
+                $pid = pcntl_fork();
+                if($pid == -1) die("Error.");
+                else if($pid) {
+                    // Parent.
+                    $this->main($config);
+                } else {
+                    // Child
+                    while(true) {
+                        echo "Running background check.\n";
+                        $this->check_weather(false);
+                        sleep(30);
+                    }
+                }   
         }
 
         function login($config) {
@@ -177,8 +204,16 @@ class IRCWeatherChecker {
                         $this->send_data('PRIVMSG '.$this->ex[2].' :'.$message);
                         break;
 
+                    case ':@set':
+                        $this->setconfig($this->ex[4], $this->ex[5]);
+                        break;
+
+                    case ':@get':
+                        $this->say($this->getconfig($this->ex[4]));
+                        break;
+
                     case ':@check':
-                        $this->check_weather();
+                        $this->check_weather(true);
                         break;
 
                     case ':@shutdown':
@@ -193,7 +228,9 @@ class IRCWeatherChecker {
             $this->main($config);
         }
 
-
+        function say($txt) {
+            return send_data("PRIVMSG ".$this->config['channel']." :".$txt);
+        }
 
         function send_data($cmd, $msg = null) {
             if($msg == null) {
@@ -219,11 +256,20 @@ class IRCWeatherChecker {
             $ret = $this->weather->run();
             if(sizeof($ret) > 0) {
                 foreach($ret as $txt) {
-                    if(strpos(trim(lower($txt)), 0, 19) != "there are no active" || $all) {
-                        $this->send_data("PRIVMSG ".$this->config['channel']." :".$txt);
-                    }
+                    if(substr(trim(strtolower($txt)), 0, 19) != "there are no active" || $all || $this->getconfig("showall") == true) {
+                        echo "\nSending: $txt \n";
+                        $this->say($txt);
+                    } else echo "\nNot sending: $txt \n";
                 }
             }
+        }
+
+        function getconfig($key) {
+            return $this->weather->getconfig($key);
+        }
+
+        function setconfig($key, $val) {
+            return $this->weather->setconfig($key, $val);
         }
 
 }
