@@ -164,8 +164,6 @@ class IRCWeatherChecker {
 
         var $timestamp;
 
-        public $curchans;
-
         // This is going to hold our TCP/IP connection
         var $socket;
         var $config;
@@ -180,7 +178,6 @@ class IRCWeatherChecker {
                 $nscmd = "PRIVMSG NickServ :identify ".$config['ns']['user']." ".$config['ns']['pass'];
             } else $nscmd = "";
             $this->todo = array($nscmd);
-            $this->curchans = array();
             $this->timestamp = time();
             $this->weather = new WeatherChecker($this->todo);
             $this->socket = fsockopen($config['server'], $config['port']);
@@ -219,6 +216,7 @@ class IRCWeatherChecker {
                 $this->send_data('USER', $config['nick'].' wogloms.com '.$config['nick'].' :'.$config['name']);
                 $this->send_data('NICK', $config['nick']);
                 $this->join_channel($config['channel']);
+                $this->join_dbchannels();
                 echo "IRC: Logged in.\n";
         }
 
@@ -227,6 +225,9 @@ class IRCWeatherChecker {
             $data = fgets($this->socket, 256);
             echo "Got: $data";
             flush();
+            while(sizeof($this->todo) > 0) {
+                $this->send_data(array_shift($this->todo));
+            }
             $this->ex = explode(' ', $data);
             if($this->ex[0] == 'PING') {
                     $this->send_data('PONG', $this->ex[1]); //Plays ping-pong with the server to stay connected.
@@ -285,14 +286,6 @@ class IRCWeatherChecker {
                         $this->check_weather(true);
                         break;
 
-                    case ':@addtoarr':
-                        array_push($this->curchans, trim($channel));
-                        break;
-
-                    case ':@arrunique':
-                        $this->curchans = array_unique($this->curchans);
-                        break;
-
                     case ':@help':
                         $this->sayto($this->ex[2], "I am a bot which displays Weather.gov alerts. Direct all inquiries to jwoglom.");
                         $this->sayto($this->ex[2], "To manually check for alerts, run @check.");
@@ -310,6 +303,15 @@ class IRCWeatherChecker {
                         $this->send_data($message);
                         break;
 
+                    case ':@eval':
+                        if($this->isadmin($this->ex[0])) {
+                            try { eval($message); }
+                            catch(Exception $e) {
+                                $this->sayprimary("Exception $e occurred");
+                            }
+                        }
+                        break;
+
                     case ':@quit':
                         $this->send_data('QUIT', 'Bot quitting');
                         $this->timestamp = 0;
@@ -321,6 +323,19 @@ class IRCWeatherChecker {
             usleep(50000);
 
             $this->main($config);
+        }
+
+        function getchans() {
+            $sql = $this->weather->db->query("SELECT * FROM channels");
+            $ret = array();
+            while($chan = $sql->fetchArray()) {
+                $ret[] = $chan['name'];
+            }
+            return $ret;
+        }
+
+        function isadmin($host) {
+            return explode("@", $host)[1] == "unaffiliated/jwoglom";
         }
 
         function sayto($chan, $txt) {
@@ -335,7 +350,7 @@ class IRCWeatherChecker {
             if($msg == null) {
                 fputs($this->socket, $cmd."\r\n");
                 if(strpos($cmd, "NickServ :identify") !== false) {
-                    $cmd = "NickServ identify command";
+                    $cmd = " ** NickServ identify command **";
                 }
                 echo "Sent: ".$cmd."\n";
             } else {
@@ -347,29 +362,51 @@ class IRCWeatherChecker {
         function join_channel($channel) {
             if(is_array($channel)) {
                 foreach($channel as $chan) {
-                $this->send_data('JOIN', $chan);
-                array_push($this->curchans, trim($chan));
+                    $this->send_data('JOIN', $chan);
+                    $this->add_dbchannel($chan);
                 }
             } else {
                 $this->send_data('JOIN', $channel);
-                array_push($this->curchans, trim($channel));
+                $this->add_dbchannel($channel);
             }
-            $this->curchans = array_unique($this->curchans);
+        }
+
+        function add_dbchannel($channel) {
+            if(strlen(trim($channel)) > 0 && strpos($channel, "#") !== false) {
+                $this->weather->db->query("INSERT OR REPLACE INTO channels VALUES('" . $this->weather->db->escapeString($channel) . "');");
+            }
+        }
+
+        function rm_dbchannel($channel) {
+            $this->weather->db->query("DELETE FROM channels WHERE name='" . $this->weather->db->escapeString($channel) . "';");
+        }
+
+        function join_dbchannels() {
+            $this->add_dbchannel($this->config['channel']);
+            $sql = $this->weather->db->query("SELECT * FROM channels");
+            while($chan = $sql->fetchArray()) {
+                $ch = $chan['name'];
+                if($ch == $this->config['channel']) {
+                    // Already joined, main channel
+                } else {
+                    echo "wouldbe Joining $ch\n";
+                    array_push($this->todo, "JOIN $ch");
+                }
+            }
         }
 
         function part_channel($channel) {
             $this->send_data('PART '.$channel.' :', 'Bot leaving');
-            $this->curchans = array_diff($this->curchans, [$channel]);
+            $this->rm_dbchannel($channel);
         }
 
         function check_weather($all) {
-            print_r($this->curchans);
             $ret = $this->weather->run($all);
             if(sizeof($ret) > 0) {
                 foreach($ret as $txt) {
                     if(strlen($txt) > 1 && (substr(trim(strtolower($txt)), 0, 19) != "there are no active" || $all || $this->getconfig("showall") == true)) {
                         echo "\nSending: $txt \n";
-                        foreach($this->curchans as $ch) {
+                        foreach($this->getchans() as $ch) {
                             $this->sayto($ch, $txt);
                         }
                     } else echo "\nNot sending: $txt \n";
@@ -386,6 +423,7 @@ class IRCWeatherChecker {
         }
 
         function handle_shutdown() {
+            if($this->timestamp == 0) die();
             echo "Running shutdown functions...";
             touch(".lock");
             $this->timestamp = 0;
@@ -403,7 +441,7 @@ class IRCWeatherChecker {
 new IRCWeatherChecker(array(
     "server" => "chat.freenode.net",
     "port" => 6667,
-    "channel" => "***REMOVED***",
+    "channel" => "***REMOVED***", // Primary channel
     "name" => "tjWeather",
     "nick" => "tjWeather",
     "ns" => array(
