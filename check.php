@@ -1,22 +1,15 @@
 <?php
-require_once 'IRCBot.php';
 class WeatherChecker {
 
     var $db;
 
     function __construct() {
         $this->db = new SQLite3("database.sqlite3");
-        sleep(10);
-        $this->main_loop();
     }
 
-    function main_loop() {
-        while(true) {
-            $this->run_notify("Running loop.");
-            $this->get_entries();
-            $this->loop_entries();
-            sleep(5);
-        }
+    function run() {
+        $this->get_entries();
+        return $this->loop_entries();
     }
 
     function urlshorten($url) {
@@ -50,16 +43,17 @@ class WeatherChecker {
     }
 
     function loop_entries() {
+        $ret = array();
         foreach($this->entries as $entry) {
             $postid = explode("?x=", $entry['id'])[1]; // actual ID
             $fr = $this->find_row($postid); // See if row exists and is notified
             $msg = $this->get_message($entry);
             if(true) { //!$fr) {
                 $this->add_row($postid, $msg); // Add row if doesn't exist
-                $this->notify($msg);
+                $ret[] = $msg;
             } else echo "Not notifying $postid -- already notified. \n";
-
         }
+        return $ret;
     }
 
     function get_message($entry) {
@@ -92,16 +86,8 @@ class WeatherChecker {
     function mark_notified($msgid) {
         $this->db->query("UPDATE TABLE messages SET irc_notified=1 WHERE id='" . $this->db->escapeString($msgid) . "'");
     }
-
-    function run_notify($msg) {
-        return $this->notify($msg);
-    }
-
-    function notify($msg) {
-        echo "Notifying: $msg \n";
-    }
 }
-
+/*
 class IRCWeatherChecker extends WeatherChecker {
     var $irc;
     var $ircchan;
@@ -131,6 +117,115 @@ class IRCWeatherChecker extends WeatherChecker {
     function run_notify($msg) {
         return $this->notify($msg);
     }
+}
+*/
+class IRCWeatherChecker {
+
+        var $todo;
+
+        var $weather;
+
+        // This is going to hold our TCP/IP connection
+        var $socket;
+        var $config;
+
+        // This is going to hold all of the messages both server and client
+        var $ex = array();
+
+        function __construct($config) {
+                echo "IRC: Starting.\n";
+                $this->todo = array();
+                $this->weather = new WeatherChecker($this->todo);
+                $this->socket = fsockopen($config['server'], $config['port']);
+                $this->config = $config;
+                $this->login($config);
+                $this->main($config);
+        }
+
+        function login($config) {
+                $this->send_data('USER', $config['nick'].' wogloms.com '.$config['nick'].' :'.$config['name']);
+                $this->send_data('NICK', $config['nick']);
+        $this->join_channel($config['channel']);
+                echo "IRC: Logged in.\n";
+        }
+
+        function main($config) {   
+            $data = fgets($this->socket, 256);
+            echo "Got: $data";
+            flush();
+            $this->ex = explode(' ', $data);
+            if($this->ex[0] == 'PING') {
+                    $this->send_data('PONG', $this->ex[1]); //Plays ping-pong with the server to stay connected.
+            }
+            if(sizeof($this->ex) >= 4) {
+                $command = str_replace(array(chr(10), chr(13)), '', $this->ex[3]);
+                $message = "";
+                for($i=4; $i <= (count($this->ex)); $i++) {
+                    if(isset($this->ex[$i])) {
+                        $message .= $this->ex[$i]." ";
+                    }
+                }
+                switch($command) {//List of commands the bot responds to from a user.
+                    case ':@join':
+                        $this->join_channel($this->ex[4]);
+                        break;                     
+                    case ':@part':
+                        $this->send_data('PART '.$this->ex[4].' :', 'Bot leaving');
+                        break;   
+
+                    case ':@say':
+                        $this->send_data('PRIVMSG '.$this->ex[2].' :'.$message);
+                        break;
+
+                    case ':@check':
+                        $this->check_weather();
+                        break;
+
+                    case ':@shutdown':
+                        $this->send_data('QUIT', 'Bot quitting');
+                        exit;
+
+                }
+            }
+
+            usleep(50000);
+
+            $this->main($config);
+        }
+
+
+
+        function send_data($cmd, $msg = null) {
+            if($msg == null) {
+                fputs($this->socket, $cmd."\r\n");
+                echo "Sent: ".$cmd."\n";
+            } else {
+                fputs($this->socket, $cmd.' '.$msg."\r\n");
+                echo "Sent: ".$cmd." ".$msg."\n";
+            }
+        }
+
+        function join_channel($channel) {
+            if(is_array($channel)) {
+                foreach($channel as $chan) {
+                    $this->send_data('JOIN', $chan);
+                }
+            } else {
+                $this->send_data('JOIN', $channel);
+            }
+        }
+
+        function check_weather($all) {
+            $ret = $this->weather->run();
+            if(sizeof($ret) > 0) {
+                foreach($ret as $txt) {
+                    if(strpos(trim(lower($txt)), 0, 19) != "there are no active" || $all) {
+                        $this->send_data("PRIVMSG ".$this->config['channel']." :".$txt);
+                    }
+                }
+            }
+        }
+
 }
 
 
