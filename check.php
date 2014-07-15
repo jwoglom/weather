@@ -48,7 +48,7 @@ class WeatherChecker {
         foreach($this->entries as $entry) {
             $postid = explode("?x=", $entry['id'])[1]; // actual ID
             $fr = $this->find_row($postid); // See if row exists and is notified
-            echo "\n fr = $fr for $postid\n\n";
+            // echo "\n fr = $fr for $postid\n\n";
             $msg = $this->get_message($entry);
             if($fr == false || $all) {
                 if($all) {
@@ -79,7 +79,6 @@ class WeatherChecker {
             "id='" . $this->db->escapeString($id) . "' LIMIT 1;"
         );
         $arr = $query->fetchArray();
-        var_dump($arr);
         if(count($arr) > 0 && $arr != false) {
             echo "Found $id\n";
             return true;
@@ -111,6 +110,10 @@ class WeatherChecker {
         } else {
             return null;
         }
+    }
+
+    function clearall() {
+        $this->db->query("DELETE FROM messages WHERE 1;");
     }
 
     function setconfig($key, $value) {
@@ -158,6 +161,8 @@ class IRCWeatherChecker {
 
         var $timestamp;
 
+        var $curchans;
+
         // This is going to hold our TCP/IP connection
         var $socket;
         var $config;
@@ -166,12 +171,13 @@ class IRCWeatherChecker {
         var $ex = array();
 
         function __construct($config) {
+            if(file_exists(".lock")) unlink(".lock");
             echo "IRC: Starting.\n";
             if(isset($config['ns'])) {
                 $nscmd = "PRIVMSG NickServ :identify ".$config['ns']['user']." ".$config['ns']['pass'];
             } else $nscmd = "";
             $this->todo = array($nscmd);
-            
+            $this->curchans = array();
             $this->timestamp = time();
             $this->weather = new WeatherChecker($this->todo);
             $this->socket = fsockopen($config['server'], $config['port']);
@@ -197,6 +203,10 @@ class IRCWeatherChecker {
                             echo "My time is ".time().", ts is ".$this->timestamp."\n";
                             // exit();
                         }
+                        if(file_exists(".lock")) {
+                            echo "Time to go bye bye.\n\n";
+                            exit();
+                        }
                     }
                 }
                 }   
@@ -205,7 +215,7 @@ class IRCWeatherChecker {
         function login($config) {
                 $this->send_data('USER', $config['nick'].' wogloms.com '.$config['nick'].' :'.$config['name']);
                 $this->send_data('NICK', $config['nick']);
-        $this->join_channel($config['channel']);
+                $this->join_channel($config['channel']);
                 echo "IRC: Logged in.\n";
         }
 
@@ -231,7 +241,7 @@ class IRCWeatherChecker {
                         $this->join_channel($this->ex[4]);
                         break;                     
                     case ':@part':
-                        $this->send_data('PART '.$this->ex[4].' :', 'Bot leaving');
+                        $this->part_channel($this->ex[4]);
                         break;   
 
                     case ':@say':
@@ -243,7 +253,7 @@ class IRCWeatherChecker {
                         $this->send_data('PRIVMSG '.$loc.' :'.$message);
                         break;
 
-                    case ':@restart':
+                    case ':@reboot':
                         $this->say("Restarting..");
                         $this->reboot();
 
@@ -259,14 +269,23 @@ class IRCWeatherChecker {
                         $this->check_weather(true);
                         break;
 
-                    case ':@shutdown':
-                        $this->send_data('QUIT', 'Bot quitting');
-                        $this->timestamp = 0;
-                        exit;
 
                     case ':@help':
                         $this->say("I am a bot which displays Weather.gov alerts. Direct all inquiries to jwoglom.");
                         $this->say("To manually check for alerts, run @check.");
+                        break;
+
+                    case ':@clearall':
+                        if(isset($this->ex[4]) && trim($this->ex[4]) == "yes") {
+                            $this->weather->clearall();
+                            $this->say("Cleared all saved messages.");
+                        } else $this->say("Type '@clearall yes' to confirm.");
+                        break;
+
+                    case ':@quit':
+                        $this->send_data('QUIT', 'Bot quitting');
+                        $this->timestamp = 0;
+                        exit;
 
                 }
             }
@@ -277,7 +296,9 @@ class IRCWeatherChecker {
         }
 
         function say($txt) {
-            return $this->send_data("PRIVMSG ".$this->config['channel']." :".$txt);
+            foreach($this->curchans as $chan) {
+                $this->send_data("PRIVMSG ".$chan." :".$txt);
+            }
         }
 
         function send_data($cmd, $msg = null) {
@@ -296,11 +317,17 @@ class IRCWeatherChecker {
         function join_channel($channel) {
             if(is_array($channel)) {
                 foreach($channel as $chan) {
-                    $this->send_data('JOIN', $chan);
+                    $this->join_channel($chan);
                 }
             } else {
                 $this->send_data('JOIN', $channel);
+                $this->curchans[] = $channel;
             }
+        }
+
+        function part_channel($channel) {
+            $this->send_data('PART '.$channel.' :', 'Bot leaving');
+            $this->curchans = array_diff($this->curchans, [$channel]);
         }
 
         function check_weather($all) {
@@ -325,6 +352,7 @@ class IRCWeatherChecker {
 
         function handle_shutdown() {
             echo "Running shutdown functions...";
+            touch(".lock");
             $this->timestamp = 0;
             $tmp = null;
             die();
